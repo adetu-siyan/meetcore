@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# Virtual environment
+venv/
+env/
+.env
+.venv
+
+# Environment variables — NEVER commit this
+.env
+.env.local
+.env.production
+
+# FastAPI / Uvicorn
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Supabase
+supabase/.temp/
+
+# Node
+node_modules/
+.next/
+frontend/.next/
+frontend/node_modules/
