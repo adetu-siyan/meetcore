@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import * as THREE from 'three'
+import { PanelShell } from '../components/PanelShell'
+import { TranscriptPanel } from '../components/TranscriptPanel'
+import { SummaryPanel } from '../components/SummaryPanel'
+import { ActionItemsPanel } from '../components/ActionItemsPanel'
+import { DraftEmailPanel } from '../components/DraftEmailPanel'
+import { CalendarPanel } from '../components/CalendarPanel'
+import { SettingsModal } from '../components/SettingsModal'
 
 const API = import.meta.env.VITE_API_URL
 
@@ -46,6 +53,14 @@ const TOOL_ICONS = {
         stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
+  schedule_meeting: (color) => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      <line x1="16" y1="2" x2="16" y2="6" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      <line x1="8" y1="2" x2="8" y2="6" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      <line x1="3" y1="10" x2="21" y2="10" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
 }
 
 const ENDPOINTS = {
@@ -53,6 +68,7 @@ const ENDPOINTS = {
   summarize_meeting: '/tools/summary',
   action_items:      '/tools/action-items',
   draft_email:       '/tools/draft-email',
+  schedule_meeting:  '/tools/schedule-meeting',
 }
 
 // ── Audio Helpers ─────────────────────────────────────────────────────────────
@@ -104,47 +120,11 @@ function playDecodedBuffer(buffer, audioCtx, amplitudeRef, shouldStop) {
   })
 }
 
-// ── Typewriter ────────────────────────────────────────────────────────────────
 
-function useTypewriter(target, active, onComplete, speed = 14) {
-  const [displayed, setDisplayed] = useState('')
-  const [done, setDone]           = useState(false)
-  const timerRef        = useRef(null)
-  const indexRef        = useRef(0)
-  const onCompleteRef   = useRef(onComplete)
-  const hasTriggeredRef = useRef(false)
-
-  useEffect(() => { onCompleteRef.current = onComplete }, [onComplete])
-
-  useEffect(() => {
-    if (!active || !target) return
-    setDisplayed('')
-    setDone(false)
-    indexRef.current = 0
-    hasTriggeredRef.current = false
-    const tick = () => {
-      indexRef.current += 1
-      setDisplayed(target.slice(0, indexRef.current))
-      if (indexRef.current < target.length) {
-        timerRef.current = setTimeout(tick, speed)
-      } else {
-        setDone(true)
-        if (!hasTriggeredRef.current) {
-          hasTriggeredRef.current = true
-          if (onCompleteRef.current) onCompleteRef.current()
-        }
-      }
-    }
-    timerRef.current = setTimeout(tick, speed)
-    return () => clearTimeout(timerRef.current)
-  }, [target, active, speed])
-
-  return { displayed, done }
-}
 
 // ── FluidSphere (Commented-Out Architecture & Shaders) ────────────────────────
 
-function FluidSphere({ canvasRef, amplitudeRef, sloshRef, dark }) {
+) {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -357,270 +337,6 @@ function FluidSphere({ canvasRef, amplitudeRef, sloshRef, dark }) {
   return <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
 }
 
-// ── Panel Shell (Adaptive Size) ───────────────────────────────────────────────
-
-function PanelShell({ dark, children, minHeight = 180, maxHeight = 'calc(100vh - 104px)' }) {
-  const contentRef = useRef(null)
-  const [height, setHeight] = useState(minHeight)
-
-  useEffect(() => {
-    if (!contentRef.current) return
-    const ro = new ResizeObserver(() => {
-      const h = contentRef.current?.scrollHeight || minHeight
-      setHeight(Math.min(Math.max(h + 56, minHeight), typeof maxHeight === 'number' ? maxHeight : 9999))
-    })
-    ro.observe(contentRef.current)
-    return () => ro.disconnect()
-  }, [minHeight, maxHeight])
-
-  return (
-    <div style={{
-      height,
-      maxHeight,
-      minWidth: 320,
-      maxWidth: 460,
-      width: 'max-content',
-      background: dark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)',
-      border: `1px solid ${dark ? 'rgba(255,255,255,0.10)' : 'rgba(26,115,232,0.18)'}`,
-      borderRadius: 24,
-      backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-      boxShadow: dark
-        ? '0 8px 40px rgba(0,0,0,0.4)'
-        : '0 4px 32px rgba(26,115,232,0.10), 0 2px 8px rgba(0,0,0,0.06)',
-      overflow: 'hidden',
-      transition: 'height 0.4s cubic-bezier(0.34,1.56,0.64,1), width 0.4s cubic-bezier(0.34,1.56,0.64,1)',
-      display: 'flex', flexDirection: 'column',
-    }}>
-      <div ref={contentRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }} className="panel-scroll">
-        {children}
-      </div>
-    </div>
-  )
-}
-
-// ── Panel Components ──────────────────────────────────────────────────────────
-
-function TranscriptPanel({ content, dark, onComplete }) {
-  const { displayed, done } = useTypewriter(content, !!content, onComplete)
-  const tc  = dark ? 'rgba(255,255,255,0.82)' : '#1a1a2e'
-  const tc2 = dark ? 'rgba(255,255,255,0.4)'  : '#9aa0a6'
-
-  const download = () => {
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = 'transcript.txt'; a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  return (
-    <div style={{ padding: '24px 24px 20px' }}>
-      <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: tc2, marginBottom: 16, marginTop: 0 }}>
-        Transcript
-      </p>
-      <p style={{ fontSize: 14, lineHeight: 1.8, color: tc, whiteSpace: 'pre-wrap', margin: 0 }}>
-        {displayed}
-        {!done && <span style={{ opacity: 0.4 }}>▍</span>}
-      </p>
-      {done && (
-        <button onClick={download} style={{
-          marginTop: 16, display: 'flex', alignItems: 'center', gap: 7,
-          padding: '8px 16px', borderRadius: 8,
-          background: dark ? 'rgba(255,255,255,0.08)' : 'rgba(99,102,241,0.08)',
-          border: `1px solid ${dark ? 'rgba(255,255,255,0.12)' : 'rgba(99,102,241,0.2)'}`,
-          color: dark ? 'rgba(255,255,255,0.7)' : '#6366f1',
-          fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"
-              stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Download
-        </button>
-      )}
-    </div>
-  )
-}
-
-function SummaryPanel({ content, dark, onComplete }) {
-  const flat = content ? [
-    ...(content.key_points     || []).map(t => ({ section: 'Key Points',    text: t })),
-    ...(content.decisions      || []).map(t => ({ section: 'Decisions',      text: t })),
-    ...(content.open_questions || []).map(t => ({ section: 'Open Questions', text: t })),
-  ] : []
-
-  const fullText = flat.map(i => i.text).join('\n')
-  const { displayed } = useTypewriter(fullText, flat.length > 0, onComplete)
-
-  const tc  = dark ? 'rgba(255,255,255,0.82)' : '#1a1a2e'
-  const tc2 = dark ? 'rgba(255,255,255,0.4)'  : '#9aa0a6'
-  const ac  = dark ? 'rgba(99,102,241,0.9)'   : '#6366f1'
-
-  let charsLeft = displayed.length
-  const rendered = flat.map(item => {
-    if (charsLeft <= 0) return null
-    const show = item.text.slice(0, charsLeft)
-    charsLeft -= item.text.length + 1
-    return { ...item, show }
-  }).filter(Boolean)
-
-  return (
-    <div style={{ padding: '24px 24px 20px' }}>
-      <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: tc2, marginBottom: 20, marginTop: 0 }}>
-        Meeting Summary
-      </p>
-      {['Key Points', 'Decisions', 'Open Questions'].map(section => {
-        const items = rendered.filter(i => i.section === section)
-        if (!items.length) return null
-        return (
-          <div key={section} style={{ marginBottom: 20 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: ac, marginBottom: 10, marginTop: 0 }}>
-              {section}
-            </p>
-            {items.map((item, i) => (
-              <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
-                <span style={{ color: ac, marginTop: 2, flexShrink: 0, fontSize: 12 }}>◆</span>
-                <p style={{ fontSize: 14, lineHeight: 1.7, color: tc, margin: 0 }}>
-                  {item.show}
-                  {item.show.length < item.text.length && <span style={{ opacity: 0.4 }}>▍</span>}
-                </p>
-              </div>
-            ))}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function ActionItemsPanel({ content, dark, onComplete }) {
-  const [checked, setChecked] = useState({})
-  const items    = Array.isArray(content) ? content : (content?.items || [])
-  const fullText = items.map(i => i.description).join('\n')
-  const { displayed } = useTypewriter(fullText, items.length > 0, onComplete)
-
-  const tc  = dark ? 'rgba(255,255,255,0.82)' : '#1a1a2e'
-  const tc2 = dark ? 'rgba(255,255,255,0.4)'  : '#9aa0a6'
-  const ac  = dark ? 'rgba(99,102,241,0.9)'   : '#6366f1'
-
-  let charsLeft = displayed.length
-  const visible = items.map((item, idx) => {
-    if (charsLeft <= 0) return null
-    const show = item.description.slice(0, charsLeft)
-    charsLeft -= item.description.length + 1
-    return { ...item, show, idx }
-  }).filter(Boolean)
-
-  return (
-    <div style={{ padding: '24px 24px 20px' }}>
-      <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: tc2, marginBottom: 20, marginTop: 0 }}>
-        Action Items
-      </p>
-      {items.length === 0 ? (
-        <p style={{ fontSize: 14, color: tc2, textAlign: 'center', margin: '24px 0' }}>
-          No clear action items detected.
-        </p>
-      ) : (
-        visible.map(({ show, idx, owner, deadline, description }) => (
-          <div key={idx} style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'flex-start' }}>
-            <button onClick={() => setChecked(c => ({ ...c, [idx]: !c[idx] }))} style={{
-              width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 2,
-              border: `1.5px solid ${checked[idx] ? ac : (dark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)')}`,
-              background: checked[idx] ? ac : 'transparent',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              {checked[idx] && (
-                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )}
-            </button>
-            <div style={{ flex: 1 }}>
-              <p style={{
-                fontSize: 14, lineHeight: 1.7, color: tc, margin: 0,
-                textDecoration: checked[idx] ? 'line-through' : 'none',
-                opacity: checked[idx] ? 0.4 : 1, transition: 'all 0.2s',
-              }}>
-                {show}
-                {show.length < description.length && <span style={{ opacity: 0.4 }}>▍</span>}
-              </p>
-              {(owner || deadline) && show.length >= description.length && (
-                <p style={{ fontSize: 12, color: tc2, margin: '3px 0 0' }}>
-                  {owner && <span>{owner}</span>}
-                  {owner && deadline && <span style={{ margin: '0 6px' }}>·</span>}
-                  {deadline && <span>{deadline}</span>}
-                </p>
-              )}
-            </div>
-          </div>
-        ))
-      )}
-    </div>
-  )
-}
-
-function DraftEmailPanel({ content, dark, onComplete }) {
-  const [copied, setCopied] = useState(false)
-  const subject  = content?.subject || ''
-  const body     = content?.body    || ''
-  const fullText = `Subject: ${subject}\n\n${body}`
-  const { displayed, done } = useTypewriter(fullText, !!fullText, onComplete)
-
-  const tc      = dark ? 'rgba(255,255,255,0.82)' : '#1a1a2e'
-  const tc2     = dark ? 'rgba(255,255,255,0.4)'  : '#9aa0a6'
-  const ac      = dark ? 'rgba(99,102,241,0.9)'   : '#6366f1'
-  const panelBg = dark ? 'rgba(255,255,255,0.05)' : 'rgba(99,102,241,0.05)'
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(fullText).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  const bodyDisplayed = displayed.slice(`Subject: ${subject}\n\n`.length)
-
-  return (
-    <div style={{ padding: '24px 24px 20px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: tc2, margin: 0 }}>
-          Email Draft
-        </p>
-        {done && (
-          <button onClick={handleCopy} style={{
-            fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 8,
-            background: copied ? ac : 'transparent',
-            border: `1px solid ${copied ? ac : (dark ? 'rgba(255,255,255,0.15)' : 'rgba(99,102,241,0.3)')}`,
-            color: copied ? '#fff' : ac, cursor: 'pointer', transition: 'all 0.2s',
-            letterSpacing: '0.05em',
-          }}>
-            {copied ? 'Copied!' : 'Copy'}
-          </button>
-        )}
-      </div>
-      {subject && displayed.length > 0 && (
-        <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 10, background: panelBg }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: ac, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>
-            Subject
-          </p>
-          <p style={{ fontSize: 13, color: tc, margin: 0, fontWeight: 500 }}>{subject}</p>
-        </div>
-      )}
-      {bodyDisplayed && (
-        <div style={{ padding: '10px 14px', borderRadius: 10, background: panelBg }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: ac, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>
-            Body
-          </p>
-          <p style={{ fontSize: 13, lineHeight: 1.75, color: tc, margin: 0, whiteSpace: 'pre-wrap' }}>
-            {bodyDisplayed}
-            {!done && <span style={{ opacity: 0.4 }}>▍</span>}
-          </p>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ── Main Screen ───────────────────────────────────────────────────────────────
 
 export default function NioScreen({ meetingId, onEnd }) {
@@ -631,11 +347,13 @@ export default function NioScreen({ meetingId, onEnd }) {
   const [dark, setDark]             = useState(false)
   const [activeTool, setActiveTool] = useState(null)
   const [usedTools, setUsedTools]   = useState([])
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [toolData, setToolData]     = useState({
     get_transcript:    { status: 'idle', content: null },
     summarize_meeting: { status: 'idle', content: null },
     action_items:      { status: 'idle', content: null },
     draft_email:       { status: 'idle', content: null },
+    schedule_meeting:  { status: 'idle', content: null },
   })
 
   const canvasRef    = useRef(null)
@@ -992,6 +710,18 @@ export default function NioScreen({ meetingId, onEnd }) {
           fontSize: 11, color: th.phaseColor,
           letterSpacing: '0.12em', textTransform: 'uppercase', fontWeight: 500,
         }}>{phaseLabel}</span>
+        <button onClick={() => setSettingsOpen(true)} style={{
+          position: 'absolute', right: 68, top: 18,
+          width: 36, height: 36, borderRadius: '50%',
+          background: th.toggleBg, border: `1px solid ${th.toggleBorder}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', transition: 'all 0.2s',
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke={th.toggleIcon} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke={th.toggleIcon} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
         <button onClick={() => setDark(d => !d)} style={{
           position: 'absolute', right: 20, top: 18,
           width: 36, height: 36, borderRadius: '50%',
@@ -1035,6 +765,9 @@ export default function NioScreen({ meetingId, onEnd }) {
             {activeTool === 'draft_email'       && toolData.draft_email.content       &&
               <DraftEmailPanel  content={toolData.draft_email.content}       dark={dark}
                 onComplete={() => speakText("Done. The email draft is ready for you.")} />}
+            {activeTool === 'schedule_meeting'  && toolData.schedule_meeting.content  &&
+              <CalendarPanel    content={toolData.schedule_meeting.content}  dark={dark}
+                onComplete={() => speakText("I've drafted the calendar invite for you.")} />}
             {activeTool && !toolData[activeTool]?.content && (
               <div style={{ padding: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <p style={{ fontSize: 13, color: dark ? 'rgba(255,255,255,0.3)' : '#9aa0a6', margin: 0 }}>
@@ -1045,6 +778,9 @@ export default function NioScreen({ meetingId, onEnd }) {
           </PanelShell>
         )}
       </div>
+
+      {/* Settings Modal */}
+      {settingsOpen && <SettingsModal dark={dark} onClose={() => setSettingsOpen(false)} />}
 
       {/* Tab strip */}
       {usedTools.length > 0 && (
@@ -2124,6 +1860,7 @@ export default function NioScreen({ meetingId, onEnd }) {
 //     }}>
 //       <style>{`
 //         @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600&display=swap');
+import { FluidSphere } from '../components/FluidSphere'
 //         * { box-sizing: border-box; }
 //         .panel-scroll::-webkit-scrollbar { width: 3px; }
 //         .panel-scroll::-webkit-scrollbar-track { background: transparent; }

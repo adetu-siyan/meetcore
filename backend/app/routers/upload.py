@@ -172,28 +172,25 @@ async def _run_pipeline(meeting_id: str, transcript_id: str, upload_date: dateti
 # ─── POLLING ──────────────────────────────────────────────────────────────────
 
 async def _poll_until_complete(meeting_id: str, transcript_id: str) -> dict:
-    headers = {"authorization": settings.ASSEMBLYAI_API_KEY}
-    url = f"{settings.ASSEMBLYAI_BASE_URL}/v2/transcript/{transcript_id}"
     poll_interval = 5
     max_polls = 240
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        for attempt in range(max_polls):
-            response = await client.get(url, headers=headers)
-            if response.status_code != 200:
-                raise Exception(f"Poll failed: {response.status_code} — {response.text}")
+    for attempt in range(max_polls):
+        try:
+            data = await assemblyai_service.get_transcript(transcript_id)
+        except assemblyai_service.AssemblyAIError as e:
+            raise Exception(f"Poll failed: {e}")
 
-            data = response.json()
-            status = data.get("status")
+        status = data.get("status")
 
-            if status == "completed":
-                return data
+        if status == "completed":
+            return data
 
-            if status == "error":
-                raise Exception(data.get("error", "Unknown transcription error"))
+        if status == "error":
+            raise Exception(data.get("error", "Unknown transcription error"))
 
-            elapsed = (attempt + 1) * poll_interval
-            _emit(meeting_id, "transcribing", f"Transcribing... ({elapsed}s elapsed)")
-            await asyncio.sleep(poll_interval)
+        elapsed = (attempt + 1) * poll_interval
+        _emit(meeting_id, "transcribing", f"Transcribing... ({elapsed}s elapsed)")
+        await asyncio.sleep(poll_interval)
 
     raise Exception("Transcription timed out after 20 minutes.")

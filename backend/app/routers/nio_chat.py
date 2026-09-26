@@ -6,6 +6,7 @@ visual tool call detection, and background email action parsing.
 import json
 import re
 import traceback
+import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from groq import AsyncGroq
@@ -19,7 +20,7 @@ settings = get_settings()
 
 groq_client = AsyncGroq(api_key=settings.GROQ_API_KEY, timeout=20.0)
 
-LLM_MODEL = "openai/gpt-oss-120b"
+LLM_MODEL = "openai/gpt-oss-20b"
 
 
 class NioAskRequest(BaseModel):
@@ -28,29 +29,27 @@ class NioAskRequest(BaseModel):
     history:    list[dict] = []
 
 
-def _extract_tool_call(raw: str) -> str | None:
+def _extract_tool_call(raw: str) -> tuple[str, str | None]:
     """
-    Detects if Nio's response is a visual tool call JSON object.
-    Handles markdown fences.
-    gpt-oss with json_object response_format does not bleed <think> into
-    content, so no reasoning tag stripping needed here.
-    Returns the tool name string if found, else None.
+    Detects if Nio's response contains a visual tool call JSON object.
+    Returns (speech_text, tool_name).
     """
-    cleaned = re.sub(r"^```(?:json)?\s*", "", raw.strip())
-    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.MULTILINE)
+    cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE).strip()
 
     try:
         data = json.loads(cleaned)
         if isinstance(data, dict) and "tool" in data:
-            return data["tool"]
+            return "", data["tool"]
     except Exception:
         pass
 
     match = re.search(r'\{\s*"tool"\s*:\s*"([a-zA-Z0-9_-]+)"\s*\}', cleaned)
     if match:
-        return match.group(1)
+        speech = cleaned.replace(match.group(0), "").strip()
+        return speech, match.group(1)
 
-    return None
+    return cleaned, None
 
 
 def _extract_background_action(text: str) -> tuple[str, dict | None]:
@@ -95,11 +94,14 @@ async def ask_nio(req: NioAskRequest):
         # 2. RAG retrieval — non-fatal, degrades gracefully to summary-only context
         retrieved_chunks = []
         try:
-            retrieved_chunks = await rag_service.retrieve_relevant_chunks(
-                meeting_id=req.meeting_id,
-                question=req.question,
-                top_k=3,
-                window_radius=1,
+            retrieved_chunks = await asyncio.wait_for(
+                rag_service.retrieve_relevant_chunks(
+                    meeting_id=req.meeting_id,
+                    question=req.question,
+                    top_k=3,
+                    window_radius=1,
+                ),
+                timeout=1.5  # Keep RAG fast to respect the 5s total budget
             )
         except Exception as rag_err:
             print(f"[Nio] RAG retrieval failed (non-fatal): {rag_err}", flush=True)
@@ -128,18 +130,12 @@ async def ask_nio(req: NioAskRequest):
         messages.append({"role": "user", "content": req.question})
 
         # 4. Groq inference
-        # gpt-oss parameter rules:
-        # - reasoning_effort: "low" | "medium" | "high" only
-        # - reasoning_format: NOT supported on gpt-oss — omitted
-        # - include_reasoning: False — clean output, no token waste
         try:
             completion = await groq_client.chat.completions.create(
                 model=LLM_MODEL,
                 messages=messages,
                 temperature=0.3,
                 max_tokens=600,
-                reasoning_effort="low",
-                include_reasoning=False,
             )
             raw_output = completion.choices[0].message.content or ""
         except Exception as groq_err:
@@ -150,13 +146,15 @@ async def ask_nio(req: NioAskRequest):
                 "background_tool": None,
             }
 
-        # 5. Visual tool call — return immediately, no speech
-        tool_name = _extract_tool_call(raw_output)
+        # 5. Visual tool call
+        speech_text, tool_name = _extract_tool_call(raw_output)
         if tool_name:
-            return {"answer": "", "tool": tool_name, "background_tool": None}
+            if not speech_text:
+                speech_text = "I'm opening that for you right now."
+            return {"answer": speech_text, "tool": tool_name, "background_tool": None}
 
         # 6. Background email dispatch
-        clean_speech, background_tool = _extract_background_action(raw_output)
+        clean_speech, background_tool = _extract_background_action(speech_text)
 
         return {
             "answer":          clean_speech,

@@ -29,9 +29,9 @@ class Settings:
 
     # --- Groq ---
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    GROQ_REASONING_MODEL: str = "qwen/qwen3.8-27b"
+    GROQ_REASONING_MODEL: str = "openai/gpt-oss-20b"
     GROQ_REASONING_EFFORT: str = "default"
-    GROQ_CHAT_MODEL: str = "qwen/qwen3.8-27b"
+    GROQ_CHAT_MODEL: str = "openai/gpt-oss-20b"
     GROQ_CHAT_EFFORT: str = "none"
     GROQ_TTS_MODEL: str = "canopylabs/orpheus-v1-english"
 
@@ -67,9 +67,8 @@ class Settings:
     MOCK_LEMUR: bool = os.getenv("MOCK_LEMUR", "false").lower() == "true"
     
     # Brevo Mail Settings
-    BREVO_API_KEY: str = ""
     BREVO_SENDER_EMAIL: str = "adetusiyan@gmail.com"
-    BREVO_SENDER_NAME: str = "Nio from MeetCore"
+    BREVO_SENDER_NAME: str = "nio"
     DEFAULT_RECIPIENT_EMAIL: str = "adetumosgad@gmail.com"
 
 @lru_cache
