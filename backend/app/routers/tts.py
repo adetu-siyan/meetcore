@@ -48,24 +48,22 @@ async def speak(req: TTSRequest):
         "response_format": "wav",
     }
 
-    async def stream_audio():
+    async def get_audio_bytes():
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
-            async with client.stream(
-                "POST",
+            response = await client.post(
                 "https://api.groq.com/openai/v1/audio/speech",
                 headers=headers,
                 json=payload,
-            ) as response:
-                if response.status_code != 200:
-                    body = await response.aread()
-                    print(f"[TTS Error {response.status_code}]: {body.decode()}", flush=True)
-                    return
-                async for chunk in response.aiter_bytes(chunk_size=4096):
-                    yield chunk
+            )
+            if response.status_code != 200:
+                print(f"[TTS Error {response.status_code}]: {response.text}", flush=True)
+                raise HTTPException(status_code=response.status_code, detail="TTS service error")
+            return response.content
 
-    return StreamingResponse(
-        stream_audio(),
-        media_type="audio/wav",
-        headers={"X-Content-Type-Options": "nosniff"},
-    )
+    try:
+        audio_data = await get_audio_bytes()
+        return Response(audio_data, media_type="audio/wav", headers={"X-Content-Type-Options": "nosniff"})
+    except httpx.RequestError as exc:
+        print(f"[TTS Network Error]: {exc}", flush=True)
+        raise HTTPException(status_code=503, detail="TTS upstream unreachable")
 

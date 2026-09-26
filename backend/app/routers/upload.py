@@ -67,8 +67,7 @@ async def upload_meeting(
     upload_date = datetime.now(timezone.utc)
 
     try:
-        content_type = file.content_type or "audio/mpeg"
-        upload_url = await assemblyai_service.upload_file(file_bytes, content_type)
+        upload_url = await assemblyai_service.upload_file(file_bytes)
         transcript_id = await assemblyai_service.start_transcription(upload_url, meeting_id)
     except assemblyai_service.AssemblyAIError as e:
         raise HTTPException(status_code=502, detail=f"AssemblyAI error: {e}")
@@ -135,7 +134,10 @@ async def _run_pipeline(meeting_id: str, transcript_id: str, upload_date: dateti
         decisions = results["decisions"] if not isinstance(results.get("decisions"), Exception) else []
         brief     = results["brief"]     if not isinstance(results.get("brief"),     Exception) else "Unable to generate priority brief."
 
-        summary = transcript_text[:500] if transcript_text else "No summary available."
+        # Since we extract the priority brief via Groq/LeMUR, we use it as the executive summary.
+        # If unavailable, we fall back to truncating the transcript.
+        summary = brief if brief and brief != "Unable to generate priority brief." else (transcript_text[:500] if transcript_text else "No summary available.")
+        
         sentiment_results = transcript_data.get("sentiment_analysis_results", [])
         sentiment_summary = rag_service.summarize_sentiment(sentiment_results)
 

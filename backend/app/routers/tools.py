@@ -73,7 +73,7 @@ Transcript Excerpt:
 async def _llm_json(messages: list[dict], max_tokens: int = 800) -> dict:
     client = AsyncGroq(api_key=settings.GROQ_API_KEY, timeout=15.0)
     completion = await client.chat.completions.create(
-        model="openai/gpt-oss-20b",
+        model=settings.GROQ_CHAT_MODEL,
         messages=messages,
         temperature=0.2,
         max_tokens=max_tokens,

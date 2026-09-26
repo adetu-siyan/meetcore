@@ -66,8 +66,6 @@ class Settings:
     # --- Dev flags ---
     MOCK_LEMUR: bool = os.getenv("MOCK_LEMUR", "false").lower() == "true"
     
-    # Brevo Mail Settings
-    BREVO_SENDER_EMAIL: str = "adetusiyan@gmail.com"
     BREVO_SENDER_NAME: str = "nio"
     DEFAULT_RECIPIENT_EMAIL: str = "adetumosgad@gmail.com"
 

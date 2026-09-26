@@ -20,7 +20,7 @@ settings = get_settings()
 
 groq_client = AsyncGroq(api_key=settings.GROQ_API_KEY, timeout=20.0)
 
-LLM_MODEL = "openai/gpt-oss-20b"
+LLM_MODEL = settings.GROQ_CHAT_MODEL
 
 
 class NioAskRequest(BaseModel):

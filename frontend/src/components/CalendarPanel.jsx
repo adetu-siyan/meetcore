@@ -18,7 +18,15 @@ export function CalendarPanel({ content, dark, onComplete }) {
   }
 
   // Parse the content, falling back to defaults if parsing fails
-  const data = typeof content === 'string' ? JSON.parse(content || '{}') : (content || {})
+  let data = content || {}
+  if (typeof content === 'string') {
+    try {
+      data = JSON.parse(content)
+    } catch (e) {
+      console.warn("Invalid JSON in CalendarPanel:", content)
+      data = {}
+    }
+  }
   
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

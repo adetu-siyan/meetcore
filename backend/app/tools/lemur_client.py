@@ -69,7 +69,7 @@ async def run_lemur_prompt(transcript_id: str, prompt: str) -> str:
     }
 
     payload = {
-        "model": "openai/gpt-oss-20b",
+        "model": getattr(settings, "GROQ_REASONING_MODEL", settings.GROQ_CHAT_MODEL),
         "messages": [
             {
                 "role": "system",
