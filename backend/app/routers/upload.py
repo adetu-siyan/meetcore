@@ -67,7 +67,8 @@ async def upload_meeting(
     upload_date = datetime.now(timezone.utc)
 
     try:
-        upload_url = await assemblyai_service.upload_file(file_bytes)
+        content_type = file.content_type or "audio/mpeg"
+        upload_url = await assemblyai_service.upload_file(file_bytes, content_type)
         transcript_id = await assemblyai_service.start_transcription(upload_url, meeting_id)
     except assemblyai_service.AssemblyAIError as e:
         raise HTTPException(status_code=502, detail=f"AssemblyAI error: {e}")

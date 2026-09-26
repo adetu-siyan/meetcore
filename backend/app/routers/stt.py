@@ -28,7 +28,8 @@ async def transcribe_audio(file: UploadFile = File(...)):
 
     try:
         # 1. Upload audio
-        upload_url = await assemblyai_service.upload_file(audio_bytes)
+        content_type = file.content_type or "audio/webm"
+        upload_url = await assemblyai_service.upload_file(audio_bytes, content_type)
 
         # 2. Start transcription
         tx_id = await assemblyai_service.start_transcription(

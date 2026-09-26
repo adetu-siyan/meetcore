@@ -12,10 +12,10 @@ class AssemblyAIError(Exception):
     pass
 
 
-async def upload_file(file_bytes: bytes) -> str:
+async def upload_file(file_bytes: bytes, content_type: str = "application/octet-stream") -> str:
     headers = {
         "authorization": settings.ASSEMBLYAI_API_KEY,
-        "content-type": "application/octet-stream",
+        "content-type": content_type,
     }
 
     async with httpx.AsyncClient(timeout=120.0) as client:
