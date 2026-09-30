@@ -40,6 +40,11 @@ def _extract_tool_call(raw: str) -> tuple[str, str | None]:
     except Exception:
         pass
 
+    match = re.search(r"^\s*TOOL_CALL:\s*([a-zA-Z0-9_-]+)\s*$", cleaned, re.MULTILINE)
+    if match:
+        speech = re.sub(r"^\s*TOOL_CALL:.*$", "", cleaned, flags=re.MULTILINE).strip()
+        return speech, match.group(1)
+
     match = re.search(r'\{\s*"tool"\s*:\s*"([a-zA-Z0-9_-]+)"\s*\}', cleaned)
     if match:
         speech = cleaned.replace(match.group(0), "").strip()
@@ -129,6 +134,13 @@ async def ask_nio(req: NioAskRequest):
 
         messages.append({"role": "user", "content": req.question})
 
+        if re.search(r"\b(?:draft|write|compose)\b.{0,60}\bemail\b", req.question, re.IGNORECASE):
+            return {
+                "answer": "I'll prepare that email now.",
+                "tool": "draft_email",
+                "background_tool": None,
+            }
+
         # 4. Groq inference — no tools, plain chat only
         try:
             completion = await groq_client.chat.completions.create(
@@ -152,6 +164,10 @@ async def ask_nio(req: NioAskRequest):
             if not speech_text:
                 speech_text = "I'm opening that for you right now."
             return {"answer": speech_text, "tool": tool_name, "background_tool": None}
+
+        speech_text = re.sub(r"^ACTION_EMAIL:.*$", "", speech_text, flags=re.MULTILINE).strip()
+        if not speech_text:
+            speech_text = "I couldn't prepare a response just now. Please try again."
 
         # 6. Background email dispatch
         clean_speech, background_tool = _extract_background_action(speech_text)
