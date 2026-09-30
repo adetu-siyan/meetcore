@@ -1,79 +1,81 @@
 # MeetCore
 
-MeetCore is a meeting intelligence application that turns uploaded audio into structured outputs such as summaries, task lists, deadlines, decisions, and an interactive assistant called Nio. The system combines transcription, AI extraction, retrieval-augmented question answering, and follow-up email generation to help teams move from conversation to action.
+MeetCore is an AI-powered meeting intelligence platform built around AssemblyAI. It turns uploaded meeting audio into structured operational memory—capturing action items, deadlines, decisions, and key context so teams can move from conversation to execution immediately after a call ends.
 
-## Overview
+Instead of leaving teams with raw transcripts and scattered notes, MeetCore transforms spoken discussion into an intelligent, searchable workflow. AssemblyAI powers the transcription and audio intelligence layer, while a meeting-aware assistant, Nio, helps users ask questions and get answers grounded in what was actually said.
 
-MeetCore follows a simple flow:
+## Why this project exists
 
-1. A user uploads a meeting recording.
-2. The backend sends the audio to AssemblyAI for transcription.
-3. Structured analysis extracts action items, deadlines, decisions, and priority context.
-4. Data is stored in Supabase.
-5. A chat assistant answers questions using the meeting summary and transcript chunks via RAG.
-6. The user can request transcript views, summaries, or draft emails.
+Most meetings generate valuable decisions and follow-ups, but those details are often lost after the call ends. MeetCore preserves that context by:
 
-## Product Goals
+- extracting tasks and assigned owners
+- resolving deadlines and delivery windows
+- identifying key decisions and follow-ups
+- indexing transcript content for instant retrieval
+- enabling post-meeting Q&A through a context-aware assistant
 
-- Turn raw meeting audio into actionable operational memory.
-- Surface what matters most: tasks, owners, deadlines, and decisions.
-- Answer post-meeting questions without re-listening to the full recording.
-- Generate concise executive-ready summaries and follow-up communications.
-- Keep the experience lightweight and fast for a single-user or small-team workflow.
+## Product snapshot
+
+- Upload meeting audio and queue background processing
+- Use AssemblyAI for transcription and spoken content analysis
+- Extract decisions, action items, priorities, and deadlines
+- Store structured meeting data in Supabase for retrieval and memory
+- Ask Nio questions grounded in the meeting transcript and summary
+- Generate summaries and draft follow-up emails automatically
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[Frontend React App] --> B[FastAPI Backend]
-    B --> C[AssemblyAI transcription]
+    A[Frontend React app] --> B[FastAPI backend]
+    B --> C[AssemblyAI transcription + audio intelligence]
     B --> D[Groq LLM / STT / TTS]
     B --> E[Gemini embeddings]
-    B --> F[Supabase storage + retrieval]
+    B --> F[Supabase memory + retrieval]
     B --> G[Brevo email delivery]
     H[Uploaded audio] --> B
-    B --> I[Nio assistant + RAG]
+    B --> I[Nio assistant + meeting context]
 ```
 
-## Tech Stack
+## Tech stack
 
 ### Frontend
 - React 18
 - Vite
-- CSS/Tailwind-based UI styling
-- Custom animated meeting dashboard
+- Tailwind-based styling and animated UI components
+- Meeting upload and assistant screen flow
 
 ### Backend
 - FastAPI
-- Pydantic models
-- Async HTTP clients for AI services
-- Background task processing for upload pipeline status
+- Pydantic
+- Async service orchestration
+- Background processing for upload status tracking
 
-### AI and data services
-- AssemblyAI: transcription and meeting intelligence
-- Groq: chat, transcription, and TTS
-- Google Gemini: embeddings for transcript chunk retrieval
-- Supabase: persistent storage for meeting records and chunk search
-- Brevo: outbound email dispatch
+### AI and integrations
+- AssemblyAI for transcription and meeting intelligence
+- Groq for chat, STT, and TTS
+- Google Gemini embeddings for transcript chunk retrieval
+- Supabase for meeting records and vector search storage
+- Brevo for email dispatch
 
-## Repository Structure
+## Repository structure
 
 ```text
 meetcore/
 ├── backend/
 │   ├── app/
 │   │   ├── core/
-│   │   │   ├── config.py          # Environment configuration and model settings
-│   │   │   └── nio_prompt.py      # Nio assistant character + context formatting
+│   │   │   ├── config.py
+│   │   │   └── nio_prompt.py
 │   │   ├── models/
-│   │   │   └── meeting.py         # Pydantic models for meetings/tasks/deadlines/decisions
+│   │   │   └── meeting.py
 │   │   ├── routers/
-│   │   │   ├── nio_chat.py        # /nio/ask assistant endpoint
-│   │   │   ├── realtime_token.py  # AssemblyAI realtime token endpoint
-│   │   │   ├── stt.py             # Groq Whisper transcription endpoint
-│   │   │   ├── tools.py           # Summary, transcript, action item, and email tools
-│   │   │   ├── tts.py             # TTS endpoint for spoken responses
-│   │   │   └── upload.py          # Upload pipeline + status tracking
+│   │   │   ├── nio_chat.py
+│   │   │   ├── realtime_token.py
+│   │   │   ├── stt.py
+│   │   │   ├── tts.py
+│   │   │   ├── tools.py
+│   │   │   └── upload.py
 │   │   ├── services/
 │   │   │   ├── assemblyai_service.py
 │   │   │   ├── email_service.py
@@ -81,9 +83,9 @@ meetcore/
 │   │   │   ├── rag_service.py
 │   │   │   ├── supabase_service.py
 │   │   │   └── validation.py
-│   │   └── main.py               # FastAPI app entry point
+│   │   └── main.py
 │   ├── requirements.txt
-│   ├── schema.sql                # Database schema hints for Supabase
+│   ├── schema.sql
 │   ├── debug_key.py
 │   ├── test_aai.py
 │   └── test_llm.py
@@ -97,78 +99,74 @@ meetcore/
 ├── fix.py
 ├── test_tools.py
 ├── README.md
-└── .gitignore
+├── .gitignore
+└── .env.example (if added outside repo)
 ```
 
-## Main Runtime Flow
+## Core runtime flow
 
-### 1. Upload and process meeting audio
-The upload flow is handled by the backend router in [backend/app/routers/upload.py](backend/app/routers/upload.py). Once a file is posted to the upload endpoint:
+### 1. Upload a meeting
+The upload endpoint in [backend/app/routers/upload.py](backend/app/routers/upload.py) accepts a file, creates a meeting id, and starts a background processing pipeline.
 
-- A UUID-based meeting id is created.
-- The file is read and validated.
-- A background task is kicked off.
-- AssemblyAI uploads the file and creates a transcript job.
-- Transcript text and AI metadata are gathered.
-- Tasks, deadlines, decisions, and brief summaries are extracted.
-- The result is saved to Supabase.
+### 2. Process transcript and structured metadata
+The app retrieves transcript text and uses extraction logic to identify:
 
-### 2. Digestion and structured extraction
-This project includes extraction logic under the [backend/app/tools](backend/app/tools) directory. These tools are responsible for capturing:
+- action items
+- assigned owners
+- deadlines
+- decisions
+- priority brief
 
-- action items and owners
-- deadlines and due date logic
-- key decisions
-- priority brief or executive-level summary
+These are normalized into Pydantic models in [backend/app/models/meeting.py](backend/app/models/meeting.py).
 
-The data is normalized into Pydantic models defined in [backend/app/models/meeting.py](backend/app/models/meeting.py).
+### 3. Save to Supabase
+Stored records include transcript text, summary, task list, deadline list, decisions, and chapter metadata. Retrieval logic is handled in [backend/app/services/supabase_service.py](backend/app/services/supabase_service.py).
 
-### 3. Retrieval and chat
-The assistant in [backend/app/routers/nio_chat.py](backend/app/routers/nio_chat.py) uses:
+### 4. Answer post-meeting questions
+The Nio assistant in [backend/app/routers/nio_chat.py](backend/app/routers/nio_chat.py) combines:
 
-- meeting summary and structured metadata
-- retrieved transcript chunks from Supabase
-- an LLM call with a carefully designed system prompt
+- meeting summary
+- priority brief
+- extracted task/deadline/decision data
+- retrieved transcript chunks from RAG
 
-This makes Nio feel like a post-meeting chief of staff rather than a generic bot.
+This allows conversational Q&A about the meeting without re-listening to the whole call.
 
-### 4. Follow-up tools
-The tools API in [backend/app/routers/tools.py](backend/app/routers/tools.py) exposes endpoints for:
+### 5. Extra tools and actions
+The tools router in [backend/app/routers/tools.py](backend/app/routers/tools.py) supports:
 
 - transcript retrieval
 - summary generation
-- action item extraction
+- action item lookup
 - draft email generation
-- background email dispatch
+- background email sending
 
-## Key Features
+## Key features
 
 ### Meeting intelligence
-- Audio upload pipeline
-- Transcript enrichment and structured metadata
-- Decision, task, and deadline extraction
-- Meeting summary and executive brief generation
+- file upload and processing pipeline
+- transcription and metadata extraction
+- decision, task, and deadline capture
+- executive summary / priority brief generation
 
 ### Nio assistant
-- Context-aware conversational Q&A
-- RAG retrieval over transcript chunks
-- Tool-call style interactions for transcript, summary, and email actions
-- Guardrail-based response planning through [backend/app/services/planning_agent.py](backend/app/services/planning_agent.py)
+- meeting-scoped conversations
+- context-aware response generation
+- retrieval from transcript chunks
+- specialist routing logic in [backend/app/services/planning_agent.py](backend/app/services/planning_agent.py)
 
-### Real-time interaction
-- AssemblyAI realtime token endpoint
-- Groq Whisper transcription for ultra-fast speech-to-text
-- Groq TTS for spoken voice responses
+### Real-time audio experience
+- AssemblyAI realtime token flow
+- Groq Whisper transcription endpoint
+- Groq TTS voice output for spoken responses
 
 ### Email automation
-- Dynamic HTML meeting email generation
-- Brevo API integration for sending summaries and follow-up notes
+- dynamic summary email building
+- Brevo API integration for sending follow-up messages
 
-## Environment Setup
+## Environment variables
 
-The project expects environment variables to be available in the runtime environment. The values are read in [backend/app/core/config.py](backend/app/core/config.py).
-
-Create a `.env` file in the `backend` directory (or export the variables in your shell before starting the API):
+The app reads configuration from [backend/app/core/config.py](backend/app/core/config.py). Create a local `.env` file in the backend directory with values like:
 
 ```env
 ASSEMBLYAI_API_KEY=your_assemblyai_key
@@ -185,7 +183,7 @@ GOOGLE_REDIRECT_URI=optional
 ENV=development
 ```
 
-## Local Development
+## Local setup
 
 ### Backend
 
@@ -205,45 +203,34 @@ npm install
 npm run dev -- --host 0.0.0.0 --port 3000
 ```
 
-Then open:
+### Access points
 
 - Frontend: http://localhost:3000
-- API: http://localhost:8000/docs
+- API docs: http://localhost:8000/docs
+- Backend API base: http://localhost:8000
 
-The frontend proxy in [frontend/vite.config.js](frontend/vite.config.js) redirects `/api` calls to the local FastAPI backend.
+The frontend proxy in [frontend/vite.config.js](frontend/vite.config.js) forwards `/api` requests to the FastAPI service.
 
-## API Summary
+## API overview
 
-| Endpoint | Method | Purpose |
+| Route | Method | Purpose |
 | --- | --- | --- |
-| `/health` | GET | Liveness check |
-| `/upload` | POST | Upload an audio file and queue processing |
-| `/upload/status/{meeting_id}` | GET | Poll processing status and events |
-| `/nio/ask` | POST | Ask Nio a question about a meeting |
-| `/tools/transcript` | POST | Fetch transcript text |
-| `/tools/summary` | POST | Fetch or synthesize a summary |
-| `/tools/action-items` | POST | Return tasks and action items |
-| `/tools/draft-email` | POST | Generate a tailored follow-up email |
-| `/tools/send-email` | POST | Dispatch an email asynchronously |
-| `/realtime-token` | POST | Get a short-lived AssemblyAI streaming token |
-| `/stt` | POST | Run speech-to-text on uploaded audio |
-| `/tts` | POST | Generate spoken audio responses |
+| `/health` | GET | health check |
+| `/upload` | POST | upload a meeting audio file |
+| `/upload/status/{meeting_id}` | GET | poll processing status |
+| `/nio/ask` | POST | ask Nio about the meeting |
+| `/tools/transcript` | POST | fetch transcript text |
+| `/tools/summary` | POST | fetch or generate summary |
+| `/tools/action-items` | POST | fetch action items |
+| `/tools/draft-email` | POST | draft an email from meeting context |
+| `/tools/send-email` | POST | send a background email |
+| `/realtime-token` | POST | mint a short-lived AssemblyAI token |
+| `/stt` | POST | transcribe uploaded audio |
+| `/tts` | POST | generate spoken audio |
 
-## Data Model Notes
+## Project status
 
-Meeting records are stored with a combination of:
-
-- meeting id and transcript id
-- status, upload date, summary, and priority brief
-- structured lists for tasks, deadlines, and decisions
-- chapters and sentiment metadata
-- transcript text for answer generation
-
-This structure is defined in [backend/app/models/meeting.py](backend/app/models/meeting.py) and persisted via [backend/app/services/supabase_service.py](backend/app/services/supabase_service.py).
-
-## Current Project State
-
-This repository is an MVP/prototype with working backend patterns and a front-end meeting experience scaffold. Some modules are either partially implemented, commented, or experimental, including portions of the original TTS/STT and older UI code. The active application path is centered on:
+This repository is an MVP prototype with a working backend flow and frontend demo experience. Some modules are partially implemented or legacy/commented code paths, but the live product direction is clear and centered on:
 
 - [backend/app/main.py](backend/app/main.py)
 - [backend/app/routers/upload.py](backend/app/routers/upload.py)
@@ -252,18 +239,31 @@ This repository is an MVP/prototype with working backend patterns and a front-en
 - [frontend/src/App.jsx](frontend/src/App.jsx)
 - [frontend/src/pages/UploadScreen.jsx](frontend/src/pages/UploadScreen.jsx)
 
+## Notes on data model
+
+Meeting records carry structured values such as:
+
+- meeting id and transcript id
+- status and upload date
+- summary and priority brief
+- tasks, deadlines, and decisions
+- transcript text and chapter metadata
+- sentiment summary
+
+This schema is defined in [backend/app/models/meeting.py](backend/app/models/meeting.py).
+
+## Suggested next steps
+
+- add a migration workflow for Supabase schema changes
+- harden validation and failure handling for AI services
+- improve frontend state management around tool execution
+- add automated tests for API and extraction logic
+- replace heuristic routing with a more robust planning layer
+
 ## License
 
-This project does not currently include an explicit license file. If you plan to distribute or reuse the code, add a repository license before production use.
-
-## Suggested Next Steps
-
-- Add a real database migration workflow for Supabase.
-- Harden validation and error handling around uploads and downstream AI services.
-- Improve the frontend state management around tool execution and assistant responses.
-- Add automated tests for endpoints, extraction logic, and configuration safety.
-- Replace heuristic planning logic with a more robust routing layer.
+There is no explicit license file in the repository yet. If you plan to distribute this project publicly or commercially, add an appropriate license before release.
 
 ## Summary
 
-MeetCore is designed to help teams move from spoken conversation to action-oriented organization. It compresses long meetings into useful knowledge, keeps memory searchable, and gives teams a conversational layer that can answer direct operational questions right after the call ends.
+MeetCore turns meeting audio into execution-ready insight. Powered by AssemblyAI, it converts discussions into structured memory, searchable context, and a meeting-aware AI assistant that helps teams act on what was decided.
