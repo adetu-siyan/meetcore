@@ -1,4 +1,5 @@
-const BASE = '/api'
+const API_URL = import.meta.env.VITE_API_URL?.replace(/\/+$/, '')
+const BASE = API_URL || '/api'
 
 export async function uploadMeeting(file) {
   const form = new FormData()
@@ -8,7 +9,7 @@ export async function uploadMeeting(file) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || 'Upload failed')
   }
-  return res.json() // { meeting_id, status, message }
+  return res.json()
 }
 
 export function streamStatus(meetingId, onEvent, onDone, onError) {
@@ -17,11 +18,10 @@ export function streamStatus(meetingId, onEvent, onDone, onError) {
 
   const poll = async () => {
     try {
-      const res = await fetch(`/api/upload/status/${meetingId}`)
+      const res = await fetch(`${BASE}/upload/status/${meetingId}`)
       if (!res.ok) throw new Error('Status check failed')
       const data = await res.json()
 
-      // Emit only new events since last poll
       const newEvents = data.events.slice(lastEventCount)
       lastEventCount = data.events.length
       newEvents.forEach(onEvent)
@@ -41,7 +41,6 @@ export function streamStatus(meetingId, onEvent, onDone, onError) {
   return () => { stopped = true }
 }
 
-// Unified askNio supporting optional history
 export async function askNio(meetingId, question, history = []) {
   const res = await fetch(`${BASE}/nio/ask`, {
     method: 'POST',
@@ -52,10 +51,9 @@ export async function askNio(meetingId, question, history = []) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || 'Nio error')
   }
-  return res.json() // { answer, strategy_used }
+  return res.json()
 }
 
-// --- TTS (Text-to-Speech) ---
 export async function speak(text, voice = 'hannah') {
   const res = await fetch(`${BASE}/tts`, {
     method: 'POST',
@@ -63,29 +61,22 @@ export async function speak(text, voice = 'hannah') {
     body: JSON.stringify({ text, voice }),
   })
   if (!res.ok) throw new Error('TTS failed')
-  return res.blob() // audio/wav blob
+  return res.blob()
 }
 
-// --- STT (Speech-to-Text) ---
 export async function transcribeAudio(audioBlob) {
   const form = new FormData()
   form.append('file', audioBlob, 'recording.wav')
-  
-  const res = await fetch(`${BASE}/stt`, { 
-    method: 'POST', 
-    body: form 
-  })
-  
+  const res = await fetch(`${BASE}/stt`, { method: 'POST', body: form })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || 'STT transcription failed')
   }
-  
-  return res.json() // { text }
+  return res.json()
 }
 
 export async function getRealtimeToken() {
   const res = await fetch(`${BASE}/realtime-token`, { method: 'POST' })
   if (!res.ok) throw new Error('Could not get realtime token')
-  return res.json() // { token }
+  return res.json()
 }
