@@ -1,199 +1,294 @@
-"""
-MeetCore — Upload Router
-POST /upload                      — receives file, starts transcription, kicks off pipeline
-GET  /upload/status/{meeting_id}  — SSE endpoint for live progress
-"""
+# import asyncio
+# import logging
+# import uuid
+# from datetime import datetime
+# from typing import Dict, List, Any
+
+# from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException
+
+# from app.services.assemblyai_service import (
+#     upload_audio_bytes,
+#     create_transcript_job,
+#     get_transcript,
+# )
+# from app.services import supabase_service
+# from app.models.meeting import MeetingStatus
+# from app.tools.task_extractor import extract_tasks
+# from app.tools.deadline_extractor import extract_deadlines
+# from app.tools.decision_extractor import extract_decisions
+# from app.tools.priority_brief import generate_priority_brief
+
+# router = APIRouter(prefix="/upload", tags=["Upload & Pipeline"])
+# logger = logging.getLogger("meetcore.upload")
+
+# _progress: Dict[str, List[Dict[str, Any]]] = {}
+# _pipeline_results: Dict[str, Dict[str, Any]] = {}
+
+
+# def _emit(meeting_id: str, step: str, message: str, done: bool = False, error: bool = False):
+#     event = {
+#         "step": step,
+#         "message": message,
+#         "done": done,
+#         "error": error,
+#         "timestamp": datetime.utcnow().isoformat(),
+#     }
+#     _progress.setdefault(meeting_id, []).append(event)
+#     logger.info(f"[{meeting_id[:8]}] step='{step}' msg='{message}' done={done}")
+
+
+# async def _run_extraction_pipeline(meeting_id: str, file_bytes: bytes, filename: str):
+#     try:
+#         _emit(meeting_id, "uploading", "Uploading audio to transcription engine...")
+#         audio_url = await upload_audio_bytes(file_bytes)
+
+#         _emit(meeting_id, "transcribing", "Submitting audio for transcription...")
+#         transcript_id = await create_transcript_job(audio_url)
+
+#         _emit(meeting_id, "transcribing", f"Transcribing audio (ID: {transcript_id})...")
+#         transcript_data = await get_transcript(transcript_id)
+#         transcript_text = transcript_data.get("text", "")
+#         upload_date = datetime.utcnow()
+
+#         _emit(meeting_id, "extracting", "Extracting tasks, deadlines, decisions, and priority brief...")
+
+#         tasks, deadlines, decisions, brief = await asyncio.gather(
+#             extract_tasks(transcript_id),
+#             extract_deadlines(transcript_id, upload_date),
+#             extract_decisions(transcript_id),
+#             generate_priority_brief(transcript_id),
+#             return_exceptions=False,
+#         )
+
+#         # Save to Supabase so Nio can find the meeting
+#         _emit(meeting_id, "saving", "Saving results...")
+#         try:
+#             await supabase_service.create_meeting_record(
+#                 meeting_id=meeting_id,
+#                 transcript_id=transcript_id,
+#                 upload_date=upload_date,
+#                 status=MeetingStatus.READY,
+#             )
+#             await supabase_service.save_meeting_results(
+#                 meeting_id=meeting_id,
+#                 transcript_text=transcript_text,
+#                 summary="",
+#                 priority_brief=brief if isinstance(brief, str) else "",
+#                 tasks=tasks,
+#                 deadlines=deadlines,
+#                 decisions=decisions,
+#                 chapters=[],
+#                 sentiment_summary="",
+#             )
+#         except Exception as db_err:
+#             logger.warning(f"[{meeting_id[:8]}] Supabase save failed (non-fatal): {db_err}")
+
+#         # Also store in-memory for status polling
+#         _pipeline_results[meeting_id] = {
+#             "meeting_id": meeting_id,
+#             "filename": filename,
+#             "transcript_id": transcript_id,
+#             "transcript_text": transcript_text,
+#             "tasks": [t.dict() if hasattr(t, "dict") else t for t in tasks],
+#             "deadlines": [d.dict() if hasattr(d, "dict") else d for d in deadlines],
+#             "decisions": [dec.dict() if hasattr(dec, "dict") else dec for dec in decisions],
+#             "priority_brief": brief,
+#             "completed_at": datetime.utcnow().isoformat(),
+#         }
+
+#         _emit(meeting_id, "completed", "Pipeline finished successfully!", done=True)
+
+#     except Exception as exc:
+#         logger.exception(f"Pipeline failure for meeting {meeting_id}: {str(exc)}")
+#         _emit(meeting_id, "error", f"Pipeline error: {str(exc)}", done=True, error=True)
+
+
+# @router.post("")
+# async def upload_file(
+#     background_tasks: BackgroundTasks,
+#     file: UploadFile = File(...),
+# ):
+#     meeting_id = str(uuid.uuid4())
+#     file_bytes = await file.read()
+
+#     if not file_bytes:
+#         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+#     logger.info(f"[MeetCore] Background task queued for {meeting_id} ({file.filename})")
+#     _progress[meeting_id] = []
+#     _emit(meeting_id, "init", "File received, queuing pipeline...")
+#     background_tasks.add_task(_run_extraction_pipeline, meeting_id, file_bytes, file.filename)
+
+#     return {
+#         "status": "queued",
+#         "meeting_id": meeting_id,
+#         "filename": file.filename,
+#     }
+
+
+# @router.get("/status/{meeting_id}")
+# async def get_status(meeting_id: str):
+#     events = _progress.get(meeting_id, [])
+#     result = _pipeline_results.get(meeting_id)
+
+#     return {
+#         "meeting_id": meeting_id,
+#         "events": events,
+#         "is_complete": any(e.get("done") for e in events),
+#         "result": result,
+#     }
+
 import asyncio
-import json
+import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import Dict, List, Any
 
-import httpx
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException
 
-from app.core.config import get_settings
-from app.models.meeting import MeetingStatus, UploadResponse
-from app.services import assemblyai_service, rag_service, supabase_service, validation
-from app.tools import task_extractor, deadline_extractor, decision_extractor, priority_brief
+from app.services.assemblyai_service import (
+    upload_audio_bytes,
+    create_transcript_job,
+    get_transcript,
+)
+from app.services import supabase_service
+from app.models.meeting import MeetingStatus
+from app.tools.task_extractor import extract_tasks
+from app.tools.deadline_extractor import extract_deadlines
+from app.tools.decision_extractor import extract_decisions
+from app.tools.priority_brief import generate_priority_brief
 
-router = APIRouter(prefix="/upload", tags=["ingestion"])
-settings = get_settings()
+router = APIRouter(prefix="/upload", tags=["Upload & Pipeline"])
+logger = logging.getLogger("meetcore.upload")
 
-_progress: dict[str, list[dict]] = {}
-
-
-def _emit(meeting_id: str, step: str, message: str, done: bool = False):
-    _progress.setdefault(meeting_id, []).append(
-        {"step": step, "message": message, "done": done}
-    )
-    print(f"[MeetCore] [{meeting_id[:8]}] {step}: {message}", flush=True)
-
-
-# ─── SSE ──────────────────────────────────────────────────────────────────────
-
-@router.get("/status/{meeting_id}")
-async def stream_status(meeting_id: str):
-    async def event_generator():
-        sent_index = 0
-        while True:
-            events = _progress.get(meeting_id, [])
-            while sent_index < len(events):
-                event = events[sent_index]
-                yield f"data: {json.dumps(event)}\n\n"
-                sent_index += 1
-                if event.get("done"):
-                    return
-            await asyncio.sleep(0.5)
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+_progress: Dict[str, List[Dict[str, Any]]] = {}
+_pipeline_results: Dict[str, Dict[str, Any]] = {}
 
 
-# ─── UPLOAD ───────────────────────────────────────────────────────────────────
+def _emit(meeting_id: str, step: str, message: str, done: bool = False, error: bool = False):
+    event = {
+        "step": step,
+        "message": message,
+        "done": done,
+        "error": error,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    _progress.setdefault(meeting_id, []).append(event)
+    logger.info(f"[{meeting_id[:8]}] step='{step}' msg='{message}' done={done}")
 
-@router.post("", response_model=UploadResponse)
-async def upload_meeting(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-):
-    file_bytes = await file.read()
 
+async def _run_extraction_pipeline(meeting_id: str, file_bytes: bytes, filename: str):
     try:
-        validation.validate_upload(file.filename, len(file_bytes))
-    except validation.ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        _emit(meeting_id, "uploading", "Uploading audio to transcription engine...")
+        audio_url = await upload_audio_bytes(file_bytes)
 
-    meeting_id = str(uuid.uuid4())
-    upload_date = datetime.now(timezone.utc)
+        _emit(meeting_id, "transcribing", "Submitting audio for transcription & AI feature analysis...")
+        transcript_id = await create_transcript_job(audio_url)
 
-    try:
-        upload_url = await assemblyai_service.upload_file(file_bytes)
-        transcript_id = await assemblyai_service.start_transcription(upload_url, meeting_id)
-    except assemblyai_service.AssemblyAIError as e:
-        raise HTTPException(status_code=502, detail=f"AssemblyAI error: {e}")
+        _emit(meeting_id, "transcribing", f"Processing audio & AssemblyAI intelligence (ID: {transcript_id})...")
+        transcript_data = await get_transcript(transcript_id)
 
-    try:
-        await supabase_service.create_meeting_record(
-            meeting_id=meeting_id,
-            transcript_id=transcript_id,
-            upload_date=upload_date,
-            status=MeetingStatus.TRANSCRIBING,
-        )
-    except Exception as e:
-        print(f"[MeetCore] Supabase create_meeting_record failed: {e}", flush=True)
-        raise HTTPException(status_code=500, detail=f"DB error: {e}")
-
-    background_tasks.add_task(_run_pipeline, meeting_id, transcript_id, upload_date)
-    print(f"[MeetCore] Background task queued for {meeting_id}", flush=True)
-
-    return UploadResponse(
-        meeting_id=meeting_id,
-        status=MeetingStatus.TRANSCRIBING,
-        message="File received. Connect to /upload/status/{meeting_id} for live progress.",
-    )
-
-
-# ─── PIPELINE ─────────────────────────────────────────────────────────────────
-
-async def _run_pipeline(meeting_id: str, transcript_id: str, upload_date: datetime):
-    try:
-        print(f"[MeetCore] PIPELINE STARTED for {meeting_id}", flush=True)
-        _emit(meeting_id, "transcribing", "Transcription in progress...")
-
-        try:
-            transcript_data = await _poll_until_complete(meeting_id, transcript_id)
-        except Exception as e:
-            _emit(meeting_id, "failed", f"Transcription failed: {e}", done=True)
-            await supabase_service.update_meeting_status(meeting_id, MeetingStatus.FAILED)
-            return
-
+        # Extract AssemblyAI Audio Intelligence Output
         transcript_text = transcript_data.get("text", "")
-        _emit(meeting_id, "transcribed", "Transcription complete.")
+        aai_summary = transcript_data.get("summary", "")
+        aai_chapters = transcript_data.get("chapters", [])
+        aai_highlights = transcript_data.get("auto_highlights_result", {}).get("results", [])
+        aai_entities = transcript_data.get("entities", [])
+        aai_sentiments = transcript_data.get("sentiment_analysis_results", [])
+        aai_utterances = transcript_data.get("utterances", [])
 
-        await supabase_service.update_meeting_status(meeting_id, MeetingStatus.EXTRACTING)
+        upload_date = datetime.utcnow()
 
-        extractors = [
-            ("tasks",     "Extracting tasks...",          lambda: task_extractor.extract_tasks(transcript_id)),
-            ("deadlines", "Extracting deadlines...",      lambda: deadline_extractor.extract_deadlines(transcript_id, upload_date)),
-            ("decisions", "Extracting decisions...",      lambda: decision_extractor.extract_decisions(transcript_id)),
-            ("brief",     "Generating priority brief...", lambda: priority_brief.generate_priority_brief(transcript_id)),
-        ]
+        _emit(meeting_id, "extracting", "Extracting tasks, deadlines, decisions, and priority brief...")
 
-        results = {}
-        for name, message, func in extractors:
-            _emit(meeting_id, name, message)
-            try:
-                results[name] = await func()
-                await asyncio.sleep(2.0)
-            except Exception as e:
-                results[name] = e
-                print(f"[MeetCore] {name} extractor failed: {e}", flush=True)
+        tasks, deadlines, decisions, brief = await asyncio.gather(
+            extract_tasks(transcript_id),
+            extract_deadlines(transcript_id, upload_date),
+            extract_decisions(transcript_id),
+            generate_priority_brief(transcript_id),
+            return_exceptions=False,
+        )
 
-        tasks     = results["tasks"]     if not isinstance(results.get("tasks"),     Exception) else []
-        deadlines = results["deadlines"] if not isinstance(results.get("deadlines"), Exception) else []
-        decisions = results["decisions"] if not isinstance(results.get("decisions"), Exception) else []
-        brief     = results["brief"]     if not isinstance(results.get("brief"),     Exception) else "Unable to generate priority brief."
-
-        # Since we extract the priority brief via Groq/LeMUR, we use it as the executive summary.
-        # If unavailable, we fall back to truncating the transcript.
-        summary = brief if brief and brief != "Unable to generate priority brief." else (transcript_text[:500] if transcript_text else "No summary available.")
-        
-        sentiment_results = transcript_data.get("sentiment_analysis_results", [])
-        sentiment_summary = rag_service.summarize_sentiment(sentiment_results)
-
-        _emit(meeting_id, "saving", "Saving results...")
+        # Save to Supabase
+        _emit(meeting_id, "saving", "Saving meeting transcript and intelligence results...")
         try:
+            await supabase_service.create_meeting_record(
+                meeting_id=meeting_id,
+                transcript_id=transcript_id,
+                upload_date=upload_date,
+                status=MeetingStatus.READY,
+            )
             await supabase_service.save_meeting_results(
                 meeting_id=meeting_id,
                 transcript_text=transcript_text,
-                summary=summary,
-                priority_brief=brief,
+                summary=aai_summary,
+                priority_brief=brief if isinstance(brief, str) else "",
                 tasks=tasks,
                 deadlines=deadlines,
                 decisions=decisions,
-                chapters=[],
-                sentiment_summary=sentiment_summary,
+                chapters=aai_chapters,
+                sentiment_summary=str(aai_sentiments[:5]) if aai_sentiments else "",
             )
-        except Exception as e:
-            print(f"[MeetCore] Failed to save results: {e}", flush=True)
+        except Exception as db_err:
+            logger.warning(f"[{meeting_id[:8]}] Supabase save failed (non-fatal): {db_err}")
 
-        _emit(meeting_id, "embedding", "Building Nio's knowledge base...")
-        try:
-            await rag_service.chunk_and_store(meeting_id, transcript_text)
-        except Exception as e:
-            print(f"[MeetCore] RAG chunking failed (non-fatal): {e}", flush=True)
+        # Store in-memory for status polling
+        _pipeline_results[meeting_id] = {
+            "meeting_id": meeting_id,
+            "filename": filename,
+            "transcript_id": transcript_id,
+            "transcript_text": transcript_text,
+            "summary": aai_summary,
+            "chapters": aai_chapters,
+            "highlights": aai_highlights,
+            "entities": aai_entities,
+            "sentiments": aai_sentiments,
+            "utterances": aai_utterances,
+            "tasks": [t.dict() if hasattr(t, "dict") else t for t in tasks],
+            "deadlines": [d.dict() if hasattr(d, "dict") else d for d in deadlines],
+            "decisions": [dec.dict() if hasattr(dec, "dict") else dec for dec in decisions],
+            "priority_brief": brief,
+            "completed_at": datetime.utcnow().isoformat(),
+        }
 
-        _emit(meeting_id, "ready", "Meeting ready. Nio is loaded.", done=True)
-        await supabase_service.update_meeting_status(meeting_id, MeetingStatus.READY)
+        _emit(meeting_id, "completed", "Pipeline finished successfully!", done=True)
 
-    except Exception as e:
-        print(f"[MeetCore] PIPELINE CRASHED: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
+    except Exception as exc:
+        logger.exception(f"Pipeline failure for meeting {meeting_id}: {str(exc)}")
+        _emit(meeting_id, "error", f"Pipeline error: {str(exc)}", done=True, error=True)
 
 
-# ─── POLLING ──────────────────────────────────────────────────────────────────
+@router.post("")
+async def upload_file(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+):
+    meeting_id = str(uuid.uuid4())
+    file_bytes = await file.read()
 
-async def _poll_until_complete(meeting_id: str, transcript_id: str) -> dict:
-    poll_interval = 5
-    max_polls = 240
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    for attempt in range(max_polls):
-        try:
-            data = await assemblyai_service.get_transcript(transcript_id)
-        except assemblyai_service.AssemblyAIError as e:
-            raise Exception(f"Poll failed: {e}")
+    logger.info(f"[MeetCore] Background task queued for {meeting_id} ({file.filename})")
+    _progress[meeting_id] = []
+    _emit(meeting_id, "init", "File received, queuing pipeline...")
+    background_tasks.add_task(_run_extraction_pipeline, meeting_id, file_bytes, file.filename)
 
-        status = data.get("status")
+    return {
+        "status": "queued",
+        "meeting_id": meeting_id,
+        "filename": file.filename,
+    }
 
-        if status == "completed":
-            return data
 
-        if status == "error":
-            raise Exception(data.get("error", "Unknown transcription error"))
+@router.get("/status/{meeting_id}")
+async def get_status(meeting_id: str):
+    events = _progress.get(meeting_id, [])
+    result = _pipeline_results.get(meeting_id)
 
-        elapsed = (attempt + 1) * poll_interval
-        _emit(meeting_id, "transcribing", f"Transcribing... ({elapsed}s elapsed)")
-        await asyncio.sleep(poll_interval)
-
-    raise Exception("Transcription timed out after 20 minutes.")
+    return {
+        "meeting_id": meeting_id,
+        "events": events,
+        "is_complete": any(e.get("done") for e in events),
+        "result": result,
+    }

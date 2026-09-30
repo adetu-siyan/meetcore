@@ -114,7 +114,7 @@ export function FluidSphere({ canvasRef, amplitudeRef, sloshRef, dark }) {
       }
     `
 
-    const COUNT  = 12000
+    const COUNT  = 6000
     const golden = Math.PI * (3.0 - Math.sqrt(5.0))
     const pos    = new Float32Array(COUNT * 3)
     const norms  = new Float32Array(COUNT * 3)

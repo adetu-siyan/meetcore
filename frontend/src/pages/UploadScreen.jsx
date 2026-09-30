@@ -1,7 +1,6 @@
 // src/pages/UploadScreen.jsx
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { uploadMeeting, streamStatus } from '../lib/api'
-import { SettingsModal } from '../components/SettingsModal'
 
 const ALLOWED = ['.mp4', '.mp3', '.wav', '.m4a', '.mpeg', '.mpg']
 
@@ -14,7 +13,6 @@ const TOOLS = [
       </svg>
     ),
     label: 'Task extractor',
-    sub: 'Action items and owners',
     desc: 'Every action item and owner',
   },
   {
@@ -22,11 +20,9 @@ const TOOLS = [
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
         <rect x="3" y="4" width="18" height="18" rx="2" stroke="#1a73e8" strokeWidth="1.8"/>
         <path d="M16 2v4M8 2v4M3 10h18" stroke="#1a73e8" strokeWidth="1.8" strokeLinecap="round"/>
-        <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" stroke="#1a73e8" strokeWidth="2" strokeLinecap="round"/>
       </svg>
     ),
     label: 'Deadline tracker',
-    sub: 'Dates resolved',
     desc: 'Specific and vague dates resolved',
   },
   {
@@ -37,7 +33,6 @@ const TOOLS = [
       </svg>
     ),
     label: 'Decision log',
-    sub: 'What was agreed',
     desc: 'What was agreed and by whom',
   },
   {
@@ -47,16 +42,15 @@ const TOOLS = [
       </svg>
     ),
     label: 'Priority brief',
-    sub: 'Top 3 to act on',
     desc: 'Three things to act on now',
-  },  {
+  },
+  {
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
         <path d="M4 6h16M4 12h16M4 18h7" stroke="#1a73e8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     ),
     label: 'Summarize meeting',
-    sub: 'Executive summary',
     desc: 'Get an instant overview',
   },
   {
@@ -66,19 +60,7 @@ const TOOLS = [
       </svg>
     ),
     label: 'Draft email',
-    sub: 'Ready-to-send drafts',
     desc: 'Auto-compose follow-ups',
-  },
-  {
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" stroke="#1a73e8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M16 2v4M8 2v4M3 10h18" stroke="#1a73e8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    ),
-    label: 'Schedule meeting',
-    sub: 'Follow-ups and syncs',
-    desc: 'Automatically propose times',
   },
 ]
 
@@ -91,18 +73,14 @@ const HEADLINES = [
 ]
 
 const NARRATION = {
-  transcribing: (msg) => msg?.includes('elapsed')
-    ? `Still transcribing — ${msg.match(/\((.+)\)/)?.[1] || ''} in.`
+  uploading:    () => 'Uploading audio...',
+  transcribing: (msg) => msg?.includes('minutes')
+    ? 'Still transcribing — this may take a few minutes for longer recordings...'
     : 'Reading through the audio now...',
-  transcribed:  () => 'Got the full transcript. Going through what happened.',
-  tasks:        () => 'Pulling out every action item and who owns it.',
-  deadlines:    () => 'Checking for dates — firm ones and the vague kind.',
-  decisions:    () => 'Logging what was actually decided, not just discussed.',
-  brief:        () => 'Figuring out the three things you need to move on now.',
+  extracting:   () => 'Extracting tasks, deadlines, decisions, and priority brief...',
   saving:       () => 'Writing everything to memory.',
-  embedding:    () => 'Building my knowledge of this meeting. Almost there.',
-  ready:        () => 'Done. Ask me anything.',
-  failed:       (msg) => `Something went wrong: ${msg}`,
+  completed:    () => 'Done. Ask me anything.',
+  error:        (msg) => `Something went wrong: ${msg}`,
 }
 
 function Clock() {
@@ -129,7 +107,7 @@ function ArcBackground() {
         style={{ position: 'absolute', inset: 0 }}>
         <style>{`
           @keyframes arcSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-          .arc-group { transform-origin: 820px 500px; animation: arcSpin 28s linear infinite; }
+          .arc-group  { transform-origin: 820px 500px; animation: arcSpin 28s linear infinite; }
           .arc-group-2 { transform-origin: 820px 500px; animation: arcSpin 40s linear infinite reverse; }
         `}</style>
         <g className="arc-group">
@@ -153,9 +131,8 @@ function ArcBackground() {
 
 function TypingHeadline() {
   const [headlineIndex, setHeadlineIndex] = useState(0)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [displayed, setDisplayed] = useState('')
-  const [typing, setTyping] = useState(true)
+  const [displayed, setDisplayed]         = useState('')
+  const [typing, setTyping]               = useState(true)
   const timeoutRef = useRef(null)
 
   useEffect(() => {
@@ -237,7 +214,7 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
         const narrate = NARRATION[event.step]
         if (narrate) addLine(narrate(event.message || ''))
       },
-      () => { setPhase('done'); setTimeout(() => onReady(meetingId), 600) },
+      () => { setPhase('done'); setTimeout(() => onReady(meetingId), 800) },
       () => { setError('Lost connection.'); setPhase('idle') }
     )
   }, [onReady, addLine])
@@ -278,13 +255,6 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
         borderBottom: '1px solid rgba(26,115,232,0.08)',
       }}>
         <span style={{ fontSize: 17, fontWeight: 600, color: '#1a1a2e', letterSpacing: '-0.3px' }}>meetcore</span>
-        <button onClick={() => setSettingsOpen(true)} style={{ position: 'absolute', right: 24, top: 24, width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 50 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-        {settingsOpen && <SettingsModal dark={false} onClose={() => setSettingsOpen(false)} />}
         <button
           onClick={() => setMenuOpen(o => !o)}
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, lineHeight: 0 }}
@@ -315,13 +285,6 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
           borderBottom: '1px solid rgba(26,115,232,0.08)',
         }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a2e' }}>meetcore</span>
-        <button onClick={() => setSettingsOpen(true)} style={{ position: 'absolute', right: 24, top: 24, width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 50 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-        {settingsOpen && <SettingsModal dark={false} onClose={() => setSettingsOpen(false)} />}
           <button onClick={() => setMenuOpen(false)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, lineHeight: 0 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -338,7 +301,7 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
             <div key={i} style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 12px', borderRadius: 10, marginBottom: 2,
-              cursor: 'pointer', transition: 'background 0.15s',
+              cursor: 'default', transition: 'background 0.15s',
             }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(26,115,232,0.06)'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -351,7 +314,7 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
               </div>
               <div>
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#1a1a2e' }}>{t.label}</p>
-                <p style={{ margin: 0, fontSize: 11, color: '#9aa0a6' }}>{t.sub}</p>
+                <p style={{ margin: 0, fontSize: 11, color: '#9aa0a6' }}>{t.desc}</p>
               </div>
             </div>
           ))}
@@ -384,7 +347,6 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
         </div>
       </div>
 
-      {/* Backdrop */}
       {menuOpen && (
         <div onClick={() => setMenuOpen(false)} style={{
           position: 'fixed', inset: 0, zIndex: 40,
@@ -400,7 +362,6 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
         padding: '100px 80px 80px',
         position: 'relative', zIndex: 10,
       }}>
-
         {isIdle && (
           <div style={{ marginBottom: 28, textAlign: 'center' }}>
             <TypingHeadline />
@@ -436,8 +397,7 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
             {isIdle && (
               <>
                 <div style={{
-                  width: 44, height: 44, borderRadius: '50%',
-                  background: '#e8f0fe',
+                  width: 44, height: 44, borderRadius: '50%', background: '#e8f0fe',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   margin: '0 auto 14px',
                 }}>
@@ -550,20 +510,6 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid rgba(26,115,232,0.08)', display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                style={{
-                  fontSize: 13, color: '#1a73e8', background: 'none',
-                  border: '1px solid rgba(26,115,232,0.3)',
-                  borderRadius: 20, padding: '6px 18px',
-                  cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#e8f0fe' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
-              >
-                Create tool
-              </button>
-            </div>
           </div>
         )}
       </div>
@@ -572,5 +518,3 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
     </div>
   )
 }
-
-

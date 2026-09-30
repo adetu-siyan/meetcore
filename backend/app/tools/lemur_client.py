@@ -1,9 +1,4 @@
-"""
-MeetCore — Groq Extraction Client (Qwen 3.8 27B)
-Routes transcript text to Groq using Qwen/Qwen3.8-27B for 
-structured extractions (tasks, deadlines, decisions, priority brief).
-"""
-import asyncio
+import logging
 import httpx
 from tenacity import (
     retry,
@@ -12,42 +7,42 @@ from tenacity import (
     retry_if_exception_type,
 )
 from app.core.config import get_settings
+from app.services.assemblyai_service import get_transcript, AssemblyAIError
 
 settings = get_settings()
+logger = logging.getLogger("meetcore.lemur")
 
-# In-memory cache to prevent downloading the same transcript multiple times
+# In-memory cache to prevent redundant transcript network fetches
 _transcript_cache = {}
 
 
 class ExtractionError(Exception):
+    """Raised when extraction from transcript fails."""
     pass
 
 
 async def _get_transcript_text(transcript_id: str) -> str:
-    """Fetches the raw transcript text from AssemblyAI with caching."""
+    """
+    Retrieves the full transcript text by awaiting AssemblyAI completion status,
+    with local in-memory caching.
+    """
     if transcript_id in _transcript_cache:
+        logger.debug(f"[Cache Hit] Returning cached transcript for {transcript_id}")
         return _transcript_cache[transcript_id]
 
-    headers = {"authorization": settings.ASSEMBLYAI_API_KEY}
+    try:
+        # Poll AssemblyAI until status == 'completed'
+        data = await get_transcript(transcript_id)
+        text = data.get("text", "").strip()
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(
-            f"{settings.ASSEMBLYAI_BASE_URL}/v2/transcript/{transcript_id}",
-            headers=headers,
-        )
+        if not text:
+            raise ExtractionError(f"Transcript {transcript_id} returned empty text.")
 
-    if response.status_code != 200:
-        raise ExtractionError(
-            f"Failed to fetch transcript: {response.status_code} — {response.text}"
-        )
+        _transcript_cache[transcript_id] = text
+        return text
 
-    data = response.json()
-    text = data.get("text", "")
-    if not text:
-        raise ExtractionError("Transcript text is empty")
-
-    _transcript_cache[transcript_id] = text
-    return text
+    except AssemblyAIError as e:
+        raise ExtractionError(f"Failed to obtain transcript text: {str(e)}") from e
 
 
 @retry(
@@ -58,8 +53,8 @@ async def _get_transcript_text(transcript_id: str) -> str:
 )
 async def run_lemur_prompt(transcript_id: str, prompt: str) -> str:
     """
-    Fetches transcript text, then sends it to Groq's API
-    using Qwen 3.8 27B for structured data extraction.
+    Fetches completed transcript text, then routes it to Groq API using
+    the configured LLM model for extraction tasks.
     """
     transcript_text = await _get_transcript_text(transcript_id)
 
@@ -68,15 +63,17 @@ async def run_lemur_prompt(transcript_id: str, prompt: str) -> str:
         "content-type": "application/json",
     }
 
+    model = getattr(settings, "GROQ_REASONING_MODEL", getattr(settings, "GROQ_CHAT_MODEL", "openai/gpt-oss-120b"))
+
     payload = {
-        "model": getattr(settings, "GROQ_REASONING_MODEL", settings.GROQ_CHAT_MODEL),
+        "model": model,
         "messages": [
             {
                 "role": "system",
                 "content": (
                     "You are an AI assistant that analyzes meeting transcripts. "
                     "The user will provide you with a transcript and a task. "
-                    "Respond only with the requested output, no conversational preamble."
+                    "Respond only with the requested output format, with no conversational preamble."
                 ),
             },
             {
@@ -96,9 +93,11 @@ async def run_lemur_prompt(transcript_id: str, prompt: str) -> str:
         )
 
     if response.status_code != 200:
+        logger.error(f"Groq API error ({response.status_code}): {response.text}")
         raise ExtractionError(
             f"Groq extraction call failed: {response.status_code} — {response.text}"
         )
 
     data = response.json()
-    return data["choices"][0]["message"]["content"]
+    output = data["choices"][0]["message"]["content"]
+    return output

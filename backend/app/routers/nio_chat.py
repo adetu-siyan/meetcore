@@ -20,7 +20,7 @@ settings = get_settings()
 
 groq_client = AsyncGroq(api_key=settings.GROQ_API_KEY, timeout=20.0)
 
-LLM_MODEL = settings.GROQ_CHAT_MODEL
+LLM_MODEL = "openai/gpt-oss-120b"
 
 
 class NioAskRequest(BaseModel):
@@ -30,10 +30,6 @@ class NioAskRequest(BaseModel):
 
 
 def _extract_tool_call(raw: str) -> tuple[str, str | None]:
-    """
-    Detects if Nio's response contains a visual tool call JSON object.
-    Returns (speech_text, tool_name).
-    """
     cleaned = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.MULTILINE)
     cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE).strip()
 
@@ -53,10 +49,6 @@ def _extract_tool_call(raw: str) -> tuple[str, str | None]:
 
 
 def _extract_background_action(text: str) -> tuple[str, dict | None]:
-    """
-    Extracts __ACTION:SEND_EMAIL(...)__ tags from Nio's speech output.
-    Strips the tag from spoken text and returns parsed email params.
-    """
     pattern = r"__ACTION:SEND_EMAIL\((.*?)\)__"
     match   = re.search(pattern, text)
     if not match:
@@ -86,40 +78,48 @@ def _extract_background_action(text: str) -> tuple[str, dict | None]:
 @router.post("/ask")
 async def ask_nio(req: NioAskRequest):
     try:
-        # 1. Fetch meeting
-        meeting = await supabase_service.get_meeting(req.meeting_id)
-        if not meeting:
-            raise HTTPException(status_code=404, detail="Meeting not found")
-
-        # 2. RAG retrieval — non-fatal, degrades gracefully to summary-only context
-        retrieved_chunks = []
+        # 1. Fetch meeting — non-fatal, Nio handles greetings without context
+        meeting = None
         try:
-            retrieved_chunks = await asyncio.wait_for(
-                rag_service.retrieve_relevant_chunks(
-                    meeting_id=req.meeting_id,
-                    question=req.question,
-                    top_k=3,
-                    window_radius=1,
-                ),
-                timeout=1.5  # Keep RAG fast to respect the 5s total budget
-            )
-        except Exception as rag_err:
-            print(f"[Nio] RAG retrieval failed (non-fatal): {rag_err}", flush=True)
+            meeting = await supabase_service.get_meeting(req.meeting_id)
+        except Exception:
+            pass
 
-        # 3. Assemble grounded context
+        # 2. RAG retrieval — only if meeting exists
+        retrieved_chunks = []
+        if meeting:
+            try:
+                retrieved_chunks = await asyncio.wait_for(
+                    rag_service.retrieve_relevant_chunks(
+                        meeting_id=req.meeting_id,
+                        question=req.question,
+                        top_k=3,
+                        window_radius=1,
+                    ),
+                    timeout=1.5
+                )
+            except Exception as rag_err:
+                print(f"[Nio] RAG retrieval failed (non-fatal): {rag_err}", flush=True)
+
+        # 3. Assemble context
         meeting_context = build_nio_context_prompt(
-            core_summary=meeting.get("summary") or "",
-            priority_brief=meeting.get("priority_brief") or "",
-            tasks=meeting.get("tasks") or [],
-            deadlines=meeting.get("deadlines") or [],
-            decisions=meeting.get("decisions") or [],
+            core_summary=meeting.get("summary") or "" if meeting else "",
+            priority_brief=meeting.get("priority_brief") or "" if meeting else "",
+            tasks=meeting.get("tasks") or [] if meeting else [],
+            deadlines=meeting.get("deadlines") or [] if meeting else [],
+            decisions=meeting.get("decisions") or [] if meeting else [],
             retrieved_chunks=retrieved_chunks,
         )
 
         messages = [
             {"role": "system", "content": NIO_SYSTEM_PROMPT},
-            {"role": "system", "content": f"MEETING CONTEXT:\n{meeting_context}"},
         ]
+
+        if meeting and meeting_context != "No meeting context available yet.":
+            messages.append({
+                "role": "system",
+                "content": f"MEETING CONTEXT:\n{meeting_context}"
+            })
 
         for h in req.history[-6:]:
             role    = h.get("role")
@@ -129,7 +129,7 @@ async def ask_nio(req: NioAskRequest):
 
         messages.append({"role": "user", "content": req.question})
 
-        # 4. Groq inference
+        # 4. Groq inference — no tools, plain chat only
         try:
             completion = await groq_client.chat.completions.create(
                 model=LLM_MODEL,
@@ -146,7 +146,7 @@ async def ask_nio(req: NioAskRequest):
                 "background_tool": None,
             }
 
-        # 5. Visual tool call
+        # 5. Visual tool call detection
         speech_text, tool_name = _extract_tool_call(raw_output)
         if tool_name:
             if not speech_text:
