@@ -129,7 +129,7 @@ function ArcBackground() {
   )
 }
 
-function TypingHeadline() {
+function TypingHeadline({ compact = false }) {
   const [headlineIndex, setHeadlineIndex] = useState(0)
   const [displayed, setDisplayed]         = useState('')
   const [typing, setTyping]               = useState(true)
@@ -160,7 +160,7 @@ function TypingHeadline() {
 
   return (
     <h1 style={{
-      fontSize: 30, fontWeight: 500, color: '#1a1a2e',
+      fontSize: compact ? 24 : 30, fontWeight: 500, color: '#1a1a2e',
       margin: '0 0 8px', letterSpacing: '-0.5px', minHeight: 40,
     }}>
       {displayed}
@@ -174,6 +174,7 @@ function TypingHeadline() {
 }
 
 export default function UploadScreen({ onReady, lastMeetingId }) {
+  const [isMobile, setIsMobile] = useState(false)
   const [phase, setPhase]       = useState('idle')
   const [lines, setLines]       = useState([])
   const [dragOver, setDragOver] = useState(false)
@@ -184,6 +185,14 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
 
   const addLine = useCallback((text) => {
     setLines(prev => [...prev, { text, id: Date.now() + Math.random() }])
+  }, [])
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 768px)')
+    const sync = () => setIsMobile(media.matches)
+    sync()
+    media.addEventListener?.('change', sync)
+    return () => media.removeEventListener?.('change', sync)
   }, [])
 
   const processFile = useCallback(async (f) => {
@@ -248,7 +257,7 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
       <nav style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 30,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '18px 28px',
+        padding: isMobile ? '14px 18px' : '18px 28px',
         background: 'rgba(240,244,255,0.85)',
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
@@ -267,7 +276,7 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
 
       {/* ── Slide-out menu ── */}
       <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: 260,
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: isMobile ? '84vw' : 260,
         background: 'rgba(255,255,255,0.95)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
@@ -359,13 +368,13 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
         minHeight: '100vh',
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
-        padding: '100px 80px 80px',
+        padding: isMobile ? '92px 18px 56px' : '100px 80px 80px',
         position: 'relative', zIndex: 10,
       }}>
         {isIdle && (
           <div style={{ marginBottom: 28, textAlign: 'center' }}>
-            <TypingHeadline />
-            <p style={{ fontSize: 15, color: '#5f6368', margin: 0 }}>
+            <TypingHeadline compact={isMobile} />
+            <p style={{ fontSize: isMobile ? 13 : 15, color: '#5f6368', margin: 0 }}>
               Drop in a recording — Nio will read it and be ready to answer anything.
             </p>
           </div>
@@ -384,7 +393,7 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
             style={{
               border: `1.5px ${isIdle ? 'dashed' : 'solid'} ${dragOver ? '#1a73e8' : isIdle ? 'rgba(26,115,232,0.25)' : 'rgba(26,115,232,0.15)'}`,
               borderRadius: 14,
-              padding: isProcessing || phase === 'done' ? '18px 22px' : '40px 24px',
+              padding: isProcessing || phase === 'done' ? (isMobile ? '16px 18px' : '18px 22px') : (isMobile ? '26px 18px' : '40px 24px'),
               textAlign: 'center',
               background: dragOver ? 'rgba(232,240,254,0.9)' : 'rgba(255,255,255,0.75)',
               backdropFilter: 'blur(12px)',
@@ -493,7 +502,7 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
             <p style={{ fontSize: 11, color: '#9aa0a6', margin: '0 0 18px', letterSpacing: '0.05em' }}>
               Available tools
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 40px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: isMobile ? '12px 0' : '14px 40px' }}>
               {TOOLS.map((t, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                   <div style={{
@@ -514,7 +523,7 @@ export default function UploadScreen({ onReady, lastMeetingId }) {
         )}
       </div>
 
-      <Clock />
+      {!isMobile && <Clock />}
     </div>
   )
 }

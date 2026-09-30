@@ -756,6 +756,7 @@ function playDecodedBuffer(buffer, audioCtx, amplitudeRef, shouldStop) {
 }
 
 export default function NioScreen({ meetingId, onEnd }) {
+  const [isMobile, setIsMobile] = useState(false)
   const [phase, setPhase]                 = useState('idle')
   const [caption, setCaption]             = useState('')
   const [recording, setRecording]         = useState(false)
@@ -791,7 +792,15 @@ export default function NioScreen({ meetingId, onEnd }) {
   const sloshVelRef       = useRef({ x: 0, y: 0 })
 
   const panelOpen  = activeTool !== null
-  const activeAxis = panelOpen ? 'calc(50% + 220px)' : '50%'
+  const activeAxis = isMobile ? '50%' : (panelOpen ? 'calc(50% + 220px)' : '50%')
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 768px)')
+    const sync = () => setIsMobile(media.matches)
+    sync()
+    media.addEventListener?.('change', sync)
+    return () => media.removeEventListener?.('change', sync)
+  }, [])
 
   // Auto scroll transcript drawer
   useEffect(() => {
@@ -1136,19 +1145,19 @@ export default function NioScreen({ meetingId, onEnd }) {
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '24px 24px 0',
+        padding: isMobile ? '14px 16px 0' : '24px 24px 0',
       }}>
-        <span style={{ fontSize: 16, fontWeight: 600, color: th.wordmark, letterSpacing: '0.08em' }}>meetcore</span>
+        <span style={{ fontSize: isMobile ? 14 : 16, fontWeight: 600, color: th.wordmark, letterSpacing: '0.08em' }}>meetcore</span>
         <span style={{
-          position: 'absolute', right: 170,
-          fontSize: 11, color: th.phaseColor,
+          position: 'absolute', right: isMobile ? 98 : 170,
+          fontSize: isMobile ? 9 : 11, color: th.phaseColor,
           letterSpacing: '0.12em', textTransform: 'uppercase', fontWeight: 500,
         }}>{phaseLabel}</span>
 
         {/* Live Conversation Transcript Toggle */}
         <button onClick={() => setTranscriptOpen(o => !o)} title="Toggle Live Transcript" style={{
-          position: 'absolute', right: 116, top: 18,
-          width: 36, height: 36, borderRadius: '50%',
+          position: 'absolute', right: isMobile ? 52 : 116, top: isMobile ? 12 : 18,
+          width: isMobile ? 30 : 36, height: isMobile ? 30 : 36, borderRadius: '50%',
           background: transcriptOpen ? accentColor : th.toggleBg,
           border: `1px solid ${th.toggleBorder}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1162,8 +1171,8 @@ export default function NioScreen({ meetingId, onEnd }) {
 
         {/* Settings Modal Toggle */}
         <button onClick={() => setSettingsOpen(true)} style={{
-          position: 'absolute', right: 68, top: 18,
-          width: 36, height: 36, borderRadius: '50%',
+          position: 'absolute', right: isMobile ? 20 : 68, top: isMobile ? 12 : 18,
+          width: isMobile ? 30 : 36, height: isMobile ? 30 : 36, borderRadius: '50%',
           background: th.toggleBg, border: `1px solid ${th.toggleBorder}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', transition: 'all 0.2s',
@@ -1176,8 +1185,8 @@ export default function NioScreen({ meetingId, onEnd }) {
 
         {/* Dark Mode Toggle */}
         <button onClick={() => setDark(d => !d)} style={{
-          position: 'absolute', right: 20, top: 18,
-          width: 36, height: 36, borderRadius: '50%',
+          position: 'absolute', right: 20, top: isMobile ? 12 : 18,
+          width: isMobile ? 30 : 36, height: isMobile ? 30 : 36, borderRadius: '50%',
           background: th.toggleBg, border: `1px solid ${th.toggleBorder}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', transition: 'all 0.2s',
@@ -1199,9 +1208,11 @@ export default function NioScreen({ meetingId, onEnd }) {
       {/* Tool Panel (Left Side) */}
       <div style={{
         position: 'absolute',
-        top: '50%', transform: 'translateY(-50%)',
-        left: panelOpen ? 52 : -500,
-        transition: 'left 0.55s cubic-bezier(0.34,1.56,0.64,1)',
+        top: isMobile ? 76 : '50%',
+        left: isMobile ? '50%' : (panelOpen ? 52 : -500),
+        bottom: isMobile ? 110 : undefined,
+        transform: isMobile ? 'translateX(-50%)' : 'translateY(-50%)',
+        transition: 'left 0.55s cubic-bezier(0.34,1.56,0.64,1), transform 0.55s cubic-bezier(0.34,1.56,0.64,1)',
         zIndex: 5,
       }}>
         {panelOpen && (
@@ -1232,9 +1243,9 @@ export default function NioScreen({ meetingId, onEnd }) {
       {/* ── LIVE TRANSCRIPT SLIDE-OVER TAB (Right Side) ────────────────────────── */}
       <div style={{
         position: 'absolute',
-        top: 72, bottom: 24,
-        right: transcriptOpen ? 24 : -380,
-        width: 340,
+        top: isMobile ? 64 : 72, bottom: isMobile ? 12 : 24,
+        right: transcriptOpen ? (isMobile ? 8 : 24) : (isMobile ? -400 : -380),
+        width: isMobile ? 'calc(100vw - 16px)' : 340,
         background: th.drawerBg,
         border: `1px solid ${th.drawerBorder}`,
         borderRadius: 16,
@@ -1299,7 +1310,7 @@ export default function NioScreen({ meetingId, onEnd }) {
       {settingsOpen && <SettingsModal dark={dark} onClose={() => setSettingsOpen(false)} />}
 
       {/* Left Tab strip */}
-      {usedTools.length > 0 && (
+      {!isMobile && usedTools.length > 0 && (
         <div style={{
           position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
           display: 'flex', flexDirection: 'column', gap: 6,
@@ -1328,9 +1339,9 @@ export default function NioScreen({ meetingId, onEnd }) {
 
       {/* Sphere */}
       <div style={{
-        position: 'absolute', bottom: SPHERE_BOTTOM,
+        position: 'absolute', bottom: isMobile ? 110 : SPHERE_BOTTOM,
         left: activeAxis, transform: 'translateX(-50%)',
-        width: SPHERE_SIZE, height: SPHERE_SIZE,
+        width: isMobile ? 220 : SPHERE_SIZE, height: isMobile ? 220 : SPHERE_SIZE,
         transition: 'left 0.55s cubic-bezier(0.34,1.56,0.64,1)',
       }}>
         <FluidSphere canvasRef={canvasRef} amplitudeRef={amplitudeRef} sloshRef={sloshRef} dark={dark} />
@@ -1339,11 +1350,11 @@ export default function NioScreen({ meetingId, onEnd }) {
       {/* Caption above Sphere */}
       {(caption || error) && (
         <div className="no-scrollbar" style={{
-          position: 'absolute', top: 72,
-          bottom: SPHERE_BOTTOM + SPHERE_SIZE + 12,
+          position: 'absolute', top: isMobile ? 64 : 72,
+          bottom: isMobile ? 295 : SPHERE_BOTTOM + SPHERE_SIZE + 12,
           left: activeAxis, transform: 'translateX(-50%)',
           transition: 'left 0.55s cubic-bezier(0.34,1.56,0.64,1)',
-          width: 'min(640px, 85vw)',
+          width: isMobile ? 'min(90vw, 480px)' : 'min(640px, 85vw)',
           overflowY: 'auto',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           padding: '8px 20px', zIndex: 8,
@@ -1360,13 +1371,13 @@ export default function NioScreen({ meetingId, onEnd }) {
 
       {/* Controls */}
       <div style={{
-        position: 'absolute', bottom: CTRL_BOTTOM,
+        position: 'absolute', bottom: isMobile ? 24 : CTRL_BOTTOM,
         left: activeAxis, transform: 'translateX(-50%)',
         transition: 'left 0.55s cubic-bezier(0.34,1.56,0.64,1)',
-        display: 'flex', alignItems: 'center', gap: 48,
+        display: 'flex', alignItems: 'center', gap: isMobile ? 22 : 48,
       }}>
         <button onClick={onEnd} style={{
-          width: 52, height: 52, borderRadius: '50%',
+          width: isMobile ? 44 : 52, height: isMobile ? 44 : 52, borderRadius: '50%',
           background: th.endBg, border: `1px solid ${th.endBorder}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', transition: 'all 0.2s',
@@ -1382,7 +1393,7 @@ export default function NioScreen({ meetingId, onEnd }) {
           onPointerUp={stopRecording}
           disabled={phase === 'thinking' || phase === 'speaking'}
           style={{
-            width: MIC_SIZE, height: MIC_SIZE, borderRadius: '50%',
+            width: isMobile ? 66 : MIC_SIZE, height: isMobile ? 66 : MIC_SIZE, borderRadius: '50%',
             background: th.micBg(recording),
             border: `1.5px solid ${th.micBorder(recording)}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1399,7 +1410,7 @@ export default function NioScreen({ meetingId, onEnd }) {
         </button>
 
         <button style={{
-          width: 52, height: 52, borderRadius: '50%',
+          width: isMobile ? 44 : 52, height: isMobile ? 44 : 52, borderRadius: '50%',
           background: th.volBg, border: `1px solid ${th.volBorder}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', transition: 'all 0.2s',

@@ -3,6 +3,15 @@ import { useState, useEffect, useRef } from 'react'
 export function PanelShell({ dark, children, minHeight = 180, maxHeight = 'calc(100vh - 104px)' }) {
   const contentRef = useRef(null)
   const [height, setHeight] = useState(minHeight)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 768px)')
+    const sync = () => setIsMobile(media.matches)
+    sync()
+    media.addEventListener?.('change', sync)
+    return () => media.removeEventListener?.('change', sync)
+  }, [])
 
   useEffect(() => {
     if (!contentRef.current) return
@@ -17,10 +26,10 @@ export function PanelShell({ dark, children, minHeight = 180, maxHeight = 'calc(
   return (
     <div style={{
       height,
-      maxHeight,
-      minWidth: 320,
-      maxWidth: 460,
-      width: 'max-content',
+      maxHeight: isMobile ? 'min(52vh, 420px)' : maxHeight,
+      minWidth: isMobile ? 0 : 320,
+      maxWidth: isMobile ? 'min(92vw, 420px)' : 460,
+      width: isMobile ? 'min(92vw, 420px)' : 'max-content',
       background: dark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)',
       border: `1px solid ${dark ? 'rgba(255,255,255,0.10)' : 'rgba(26,115,232,0.18)'}`,
       borderRadius: 24,
